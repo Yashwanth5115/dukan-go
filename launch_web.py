@@ -15,6 +15,7 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = ROOT_DIR / "frontend"
 BACKEND_DIR = ROOT_DIR / "backend"
 
 
@@ -87,7 +88,7 @@ def stop_process(proc: subprocess.Popen | None) -> None:
 
 
 def start_frontend_server(host: str, port: int) -> tuple[ThreadingHTTPServer, threading.Thread]:
-    handler = partial(StaticAssetHandler, directory=str(ROOT_DIR))
+    handler = partial(StaticAssetHandler, directory=str(FRONTEND_DIR))
     server = ThreadingHTTPServer((host, port), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -116,7 +117,7 @@ def main() -> int:
     try:
         print(
             f"Starting frontend: static server on http://{args.host}:{args.frontend_port} "
-            f"(root: {ROOT_DIR})"
+            f"(root: {FRONTEND_DIR})"
         )
         frontend_server, frontend_thread = start_frontend_server(args.host, args.frontend_port)
 
