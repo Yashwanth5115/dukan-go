@@ -292,17 +292,8 @@ const DataEngine = (() => {
     return { success: true };
   }
 
-  function completeBill() {
+  async function completeBill() {
     if (currentBill.items.length === 0) return { success: false, reason: 'empty_bill' };
-
-    // Deduct stock
-    currentBill.items.forEach(bi => {
-      if (bi.id) {
-        const inv = inventory.find(i => i.id === bi.id);
-        if (inv) inv.qty = Math.max(0, inv.qty - bi.qty);
-      }
-    });
-    save('inventory', inventory);
 
     const txn = {
       id: `TXN-${String(transactions.length + 1).padStart(4, '0')}`,
@@ -315,23 +306,78 @@ const DataEngine = (() => {
       total: getBillTotal(),
       customerName: currentBill.customerName
     };
-    transactions.push(txn);
-    save('transactions', transactions);
 
-    // Check low stock alerts
-    const lowStockAlerts = [];
+    // ─── Try authenticated backend call ────────────────
+    try {
+      if (typeof window.apiCall === 'function') {
+        const result = await window.apiCall('/transactions', 'POST', txn);
+        if (result.ok) {
+          // Success! Clear local state and return
+          currentBill = { items: [], discount: 0, discountType: 'percent', customerName: '' };
+          undoStack = [];
+          
+          // Trigger a background refresh of inventory and transactions
+          setTimeout(() => {
+            if (typeof window.refreshInventory === 'function') window.refreshInventory();
+            syncWithServer();
+          }, 500);
+
+          return { success: true, txn };
+        }
+      }
+    } catch (e) {
+      console.warn("Backend sync failed, falling back to local storage:", e);
+    }
+
+    // ─── Local Fallback ────────────────
+    // Deduct stock locally
     currentBill.items.forEach(bi => {
       if (bi.id) {
         const inv = inventory.find(i => i.id === bi.id);
-        if (inv && inv.qty <= 10) lowStockAlerts.push(inv);
+        if (inv) inv.qty = Math.max(0, inv.qty - bi.qty);
       }
     });
+    save('inventory', inventory);
+
+    transactions.push(txn);
+    save('transactions', transactions);
 
     currentBill = { items: [], discount: 0, discountType: 'percent', customerName: '' };
     undoStack = [];
 
-    return { success: true, txn, lowStockAlerts };
+    return { success: true, txn };
   }
+
+  async function syncWithServer() {
+    if (typeof window.apiCall !== 'function') return;
+    
+    try {
+      // Sync Inventory
+      const invResult = await window.apiCall('/inventory', 'GET');
+      if (invResult.ok && Array.isArray(invResult.data)) {
+        // Map backend 'stock' back to 'qty' for local compatibility
+        inventory = invResult.data.map(item => ({
+          ...item,
+          qty: item.stock
+        }));
+        save('inventory', inventory);
+      }
+
+      // Sync Transactions
+      const txnResult = await window.apiCall('/transactions', 'GET');
+      if (txnResult.ok && Array.isArray(txnResult.data)) {
+        transactions = txnResult.data;
+        save('transactions', transactions);
+      }
+      
+      console.log("Data Engine: Sync with server complete.");
+    } catch (e) {
+      console.warn("Data Engine: Sync failed", e);
+    }
+  }
+
+  // Auto-sync on load
+  setTimeout(syncWithServer, 1000);
 
   // ========== UNAVAILABLE LOG ==========
   function logUnavailable(itemName) {
@@ -517,6 +563,7 @@ const DataEngine = (() => {
     logUnavailable, getUnavailableItems,
     getTodayTransactions, getDaySummary, getWeeklySummary, getPeakHours, getTopSellingItems,
     runApriori, getBundleRecommendations, getRestockSuggestions,
+    syncWithServer,
     getTransactions: () => transactions,
     resetTransactions: () => {
       transactions = generateSampleTransactions();

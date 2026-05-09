@@ -1293,7 +1293,7 @@ const VoiceEngine = (() => {
   }
 
   // ========== EXECUTE COMMAND ==========
-  function executeCommand(cmd) {
+  async function executeCommand(cmd) {
     emitState('executing');
     const execStartedAt = performance.now();
     let result;
@@ -1490,11 +1490,11 @@ const VoiceEngine = (() => {
 
       case 'bill': {
         if (typeof window !== 'undefined' && typeof window.generateBill === 'function') {
-          result = window.generateBill({ source: 'voice' });
+          result = await window.generateBill({ source: 'voice' });
         } else {
-          result = DataEngine.completeBill();
+          result = await DataEngine.completeBill();
         }
-        if (result.success) {
+        if (result && result.success) {
           speak(getLangText(
             `బిల్లు పూర్తయింది! ₹${result.txn.total}`,
             `Bill completed! ₹${result.txn.total}`,

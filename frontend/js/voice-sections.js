@@ -591,41 +591,29 @@
   document.getElementById('manualInput')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitManualCommand(); });
 
   window.generateBill = function(options = {}) {
-    // Server-authoritative checkout with fallback to client-side
     (async () => {
       try {
-        const res = await fetch('/billing/checkout', {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({})});
-        const body = await res.json();
-        if (res.ok && body && body.ok) {
-          const data = body.data;
-          // data contains transaction, lowStockAlerts, billJson, whatsappMessage
-          window.currentLastBill = data.transaction;
-          renderReceipt(data.transaction);
-          if (typeof showToast === 'function') showToast('Bill generated');
-          const delay = options && options.source === 'voice' ? 250 : 120;
-          setTimeout(() => switchSection('billpreview', document.querySelector('[data-section=billpreview]')), delay);
-          updateBillUI();
-          return;
-        }
-      } catch (e) {
-        // fallthrough to client fallback
-      }
-
-      // fallback to client-side
-      try {
-        const result = DataEngine.completeBill();
+        if (typeof showToast === 'function') showToast('Finalizing bill...', 'info');
+        
+        const result = await DataEngine.completeBill();
         updateBillUI();
+
         if (!result.success) {
-          if (typeof showToast === 'function') showToast('Bill is empty', 'error');
+          if (typeof showToast === 'function') showToast(result.reason === 'empty_bill' ? 'Bill is empty' : 'Unable to generate bill', 'error');
           return result;
         }
+
         window.currentLastBill = result.txn;
         renderReceipt(result.txn);
-        if (typeof showToast === 'function') showToast('Bill generated');
+        
+        if (typeof showToast === 'function') showToast('✓ Bill generated and saved');
+        
         const delay = options && options.source === 'voice' ? 250 : 120;
         setTimeout(() => switchSection('billpreview', document.querySelector('[data-section=billpreview]')), delay);
+        
         return result;
       } catch (e) {
+        console.error("Generate bill failed:", e);
         if (typeof showToast === 'function') showToast('Unable to generate bill', 'error');
       }
     })();
