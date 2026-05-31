@@ -88,8 +88,9 @@ def add_inventory():
 @app.route('/login', methods=['POST'])
 def login():
     # Simple mock login for hackathon
-    data = request.json
+    data = request.json or {}
     username = data.get("username", "admin")
+    password = data.get("password", "")
     return jsonify({
         "ok": True,
         "data": {
@@ -100,6 +101,29 @@ def login():
             }
         },
         "message": "Login successful"
+    })
+
+
+@app.route('/register', methods=['POST'])
+def register():
+    # Mock registration for hackathon
+    data = request.json or {}
+    username = data.get("username", "")
+    password = data.get("password", "")
+    if not username or len(username) < 3:
+        return jsonify({"ok": False, "message": "Username must be at least 3 characters"}), 400
+    if not password or len(password) < 6:
+        return jsonify({"ok": False, "message": "Password must be at least 6 characters"}), 400
+    return jsonify({
+        "ok": True,
+        "data": {
+            "token": f"lc_mock_token_{username}_reg",
+            "user": {
+                "username": username,
+                "role": "Store Owner"
+            }
+        },
+        "message": f"Account created successfully! Welcome, {username}"
     })
 
 
@@ -197,6 +221,29 @@ def get_transactions():
         })
     except Exception as e:
         return jsonify({"ok": False, "message": str(e)}), 500
+
+
+@app.route('/voice/process', methods=['POST', 'OPTIONS'])
+def process_voice_command():
+    if request.method == 'OPTIONS':
+        return jsonify({"ok": True}), 200
+    try:
+        data = request.get_json(silent=True) or {}
+        text = data.get("text", "") or ""
+        source = data.get("source", "unknown") or "unknown"
+        if text:
+            print(f"[Voice Assistant] Command: '{text}' (Source: {source})")
+        return jsonify({
+            "ok": True,
+            "message": "Command received",
+            "data": {
+                "text": text,
+                "source": source
+            }
+        })
+    except Exception as e:
+        print(f"[Voice Assistant Error] {e}")
+        return jsonify({"ok": False, "message": "Voice processing error"}), 500
 
 
 if __name__ == '__main__':

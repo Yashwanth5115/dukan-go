@@ -1,5 +1,5 @@
-// Service Worker v19 — Network First (always fresh JS/CSS/HTML)
-const CACHE_NAME = 'localcart-v19';
+// Service Worker v20 — Network First (always fresh JS/CSS/HTML)
+const CACHE_NAME = 'dukango-v20';
 
 // On install: immediately activate (skip waiting)
 self.addEventListener('install', () => {

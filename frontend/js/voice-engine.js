@@ -1088,6 +1088,7 @@ const VoiceEngine = (() => {
 
     recognition.onerror = (event) => {
       const err = event && event.error ? event.error : '';
+      console.error(`Speech recognition error: ${err}`, event);
       if (err === 'no-speech') {
         emitState('listening');
         emitTranscript(normalizeTranscriptText(liveTranscript), true);
@@ -1103,12 +1104,22 @@ const VoiceEngine = (() => {
         return;
       }
 
-      if (err === 'aborted' && !recognitionShouldRun) return;
+      if (err === 'aborted') {
+        console.warn('Speech recognition aborted');
+        return;
+      }
 
       if (err === 'network') {
         recognitionShouldRun = false;
         emitState('unsupported');
         emitTranscript('Speech service network issue. Check internet and try again.', false);
+        return;
+      }
+
+      if (err === 'language-not-supported') {
+        recognitionShouldRun = false;
+        emitState('unsupported');
+        emitTranscript(`Language not supported by your browser: ${recognition.lang}. Try switching to English.`, false);
         return;
       }
 
@@ -1126,7 +1137,7 @@ const VoiceEngine = (() => {
             recognition.lang = getRecognitionLanguageCode();
             recognition.start();
           } catch (_err) {
-            // start can throw if browser is not ready yet; next end cycle retries
+            console.error('Recognition auto-restart failed:', _err);
           }
         }, RECOGNITION_RESTART_DELAY_MS);
         return;
@@ -1137,6 +1148,41 @@ const VoiceEngine = (() => {
     };
 
     return true;
+  }
+
+  async function requestMicrophonePermission() {
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        const result = await navigator.permissions.query({ name: 'microphone' });
+        if (result.state === 'denied') {
+          console.warn('Microphone permission query state: denied');
+          emitState('error-permission');
+          emitTranscript('Microphone permission is denied. Please enable microphone access in your browser settings.', false);
+          return false;
+        }
+        if (result.state === 'granted') {
+          return true;
+        }
+      } catch (err) {
+        console.warn('navigator.permissions.query error:', err);
+      }
+    }
+
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop());
+        return true;
+      } catch (err) {
+        console.error('Microphone permission request failed:', err);
+        emitState('error-permission');
+        emitTranscript('Microphone access denied. Please allow microphone access and try again.', false);
+        return false;
+      }
+    } else {
+      console.warn('getUserMedia is not supported in this browser.');
+      return true;
+    }
   }
 
   async function startBrowserSpeechListening() {
@@ -1156,6 +1202,9 @@ const VoiceEngine = (() => {
       return false;
     }
 
+    const hasPermission = await requestMicrophonePermission();
+    if (!hasPermission) return false;
+
     if (!wakeWordEnabled) isActivated = true;
 
     recognitionShouldRun = true;
@@ -1167,9 +1216,12 @@ const VoiceEngine = (() => {
 
     try {
       recognition.lang = getRecognitionLanguageCode();
-      recognition.start();
+      if (!recognitionIsRunning) {
+        recognition.start();
+      }
       return true;
     } catch (_err) {
+      console.error('Speech recognition start failed:', _err);
       recognitionShouldRun = false;
       emitState('error-permission');
       return false;
@@ -1721,7 +1773,17 @@ const VoiceEngine = (() => {
 
   // ========== BACKEND HEALTH ==========
   async function checkBackendHealth(_force = false) {
-    return true;
+    try {
+      const res = await fetch(`${normalizedBackendUrl()}/health`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+      const data = await res.json();
+      return !!(data && data.ok);
+    } catch (_err) {
+      console.warn('Backend health check failed:', _err);
+      return false;
+    }
   }
 
   async function mirrorCommandToBackend(rawText) {
